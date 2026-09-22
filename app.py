@@ -7,9 +7,10 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import json
-from grievance_router import GrievanceRouter, RoutingDecision, create_path_visualization
 import plotly.graph_objects as go
 import plotly.express as px
+
+from grievance_router import GrievanceRouter, RoutingDecision, create_path_visualization
 from supabase_client import SupabaseGraphClient
 
 # ============================================================================
@@ -219,7 +220,9 @@ and Aadhaar says to contact the bank. I'm not receiving any money.""",
                                     st.markdown(f"**{i}. {failure}**")
                                 with col2:
                                     if i == 1:
-                                        st.label_option_button("Primary", disabled=True)
+                                        st.caption("🔴 Primary")
+                                    else:
+                                        st.caption("🟡 Secondary")
                         else:
                             st.info("No specific failures identified")
                     
@@ -229,17 +232,17 @@ and Aadhaar says to contact the bank. I'm not receiving any money.""",
                         
                         if routing_decision.resolution_paths:
                             for i, resolution in enumerate(routing_decision.resolution_paths, 1):
-                                with st.expander(f"Step {i}: {resolution['name']}"):
+                                with st.expander(f"Step {i}: {resolution.get('name', 'Resolution Path')}"):
                                     col1, col2, col3 = st.columns(3)
                                     
                                     with col1:
-                                        st.metric("Authority", resolution['authority'], delta=None)
+                                        st.metric("Authority", resolution.get('authority', 'N/A'))
                                     
                                     with col2:
-                                        st.metric("Time", resolution['timeToResolve'], delta=None)
+                                        st.metric("Time", resolution.get('timeToResolve', 'N/A'))
                                     
                                     with col3:
-                                        st.metric("Steps", resolution['steps'], delta=None)
+                                        st.metric("Steps", resolution.get('steps', 'N/A'))
                         else:
                             st.info("No resolution paths found")
                     
@@ -249,14 +252,12 @@ and Aadhaar says to contact the bank. I'm not receiving any money.""",
                         st.markdown("**Knowledge Graph Reasoning Chain:**")
                         
                         if routing_decision.graph_path:
-                            # Show path as text
                             path_text = ""
                             for source, relationship, target in routing_decision.graph_path:
                                 path_text += f"{source}\n  ↓ [{relationship}]\n{target}\n\n"
                             
                             st.code(path_text, language="text")
                             
-                            # Visualize path
                             fig = create_path_visualization(routing_decision.graph_path)
                             st.plotly_chart(fig, use_container_width=True)
                         else:
@@ -274,8 +275,8 @@ and Aadhaar says to contact the bank. I'm not receiving any money.""",
                             auth_data = []
                             for auth in routing_decision.appeal_authorities:
                                 auth_data.append({
-                                    'Authority': auth['name'],
-                                    'Level': auth['level'],
+                                    'Authority': auth.get('name', 'N/A'),
+                                    'Level': auth.get('level', 'N/A'),
                                     'Contact': auth.get('contact', 'N/A')
                                 })
                             
@@ -307,20 +308,20 @@ and Aadhaar says to contact the bank. I'm not receiving any money.""",
                             st.info(f"📋 Ticket ID: `{ticket_id}`")
                     
                     with col3:
-                        if st.button("📥 Download Report", use_container_width=True):
-                            report_data = {
-                                'grievance': grievance_text,
-                                'owner': routing_decision.primary_owner,
-                                'confidence': routing_decision.confidence_score,
-                                'failures': routing_decision.failure_types,
-                                'timestamp': datetime.now().isoformat()
-                            }
-                            st.download_button(
-                                label="Download JSON",
-                                data=json.dumps(report_data, indent=2),
-                                file_name=f"grievance_{ticket_id}.json",
-                                mime="application/json"
-                            )
+                        report_data = {
+                            'grievance': grievance_text,
+                            'owner': routing_decision.primary_owner,
+                            'confidence': routing_decision.confidence_score,
+                            'failures': routing_decision.failure_types,
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        st.download_button(
+                            label="📥 Download Report",
+                            data=json.dumps(report_data, indent=2),
+                            file_name=f"grievance_{datetime.now().strftime('%Y%m%d%H%M%S')}.json",
+                            mime="application/json",
+                            use_container_width=True
+                        )
                 
                 except Exception as e:
                     st.error(f"❌ Routing failed: {str(e)}")
@@ -334,39 +335,32 @@ elif page == "📊 Analytics":
     
     st.header("System Analytics & Dashboard")
     
-    # Get data from database
     audit_summary = st.session_state.db.get_audit_summary()
     
-    if audit_summary['total'] == 0:
+    if audit_summary.get('total', 0) == 0:
         st.info("No grievances routed yet. Go to 'Route Grievance' page to get started!")
     else:
-        # Key metrics
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("Total Grievances Routed", audit_summary['total'])
+            st.metric("Total Grievances Routed", audit_summary.get('total', 0))
         
         with col2:
-            st.metric("Average Confidence", f"{audit_summary['avg_confidence']:.1%}")
+            st.metric("Average Confidence", f"{audit_summary.get('avg_confidence', 0.0):.1%}")
         
         with col3:
-            st.metric("Departments Involved", len(audit_summary['by_department']))
+            st.metric("Departments Involved", len(audit_summary.get('by_department', {})))
         
         with col4:
-            st.metric("Failure Types", len(audit_summary['by_failure_type']))
+            st.metric("Failure Types", len(audit_summary.get('by_failure_type', {})))
         
         st.divider()
         
-        # Charts
         col1, col2 = st.columns(2)
         
         with col1:
-            if audit_summary['by_department']:
-                dept_counts = {}
-                # Get department names
-                for dept_id in audit_summary['by_department'].keys():
-                    dept_counts[f"Dept {dept_id}"] = audit_summary['by_department'][dept_id]
-                
+            if audit_summary.get('by_department'):
+                dept_counts = {f"Dept {k}": v for k, v in audit_summary['by_department'].items()}
                 fig = px.pie(
                     values=list(dept_counts.values()),
                     names=list(dept_counts.keys()),
@@ -375,9 +369,8 @@ elif page == "📊 Analytics":
                 st.plotly_chart(fig, use_container_width=True)
         
         with col2:
-            if audit_summary['by_failure_type']:
+            if audit_summary.get('by_failure_type'):
                 failure_counts = audit_summary['by_failure_type']
-                
                 fig = px.bar(
                     x=list(failure_counts.keys()),
                     y=list(failure_counts.values()),
@@ -399,7 +392,6 @@ elif page == "📚 Knowledge Graph":
     It contains relationships between schemes, departments, services, failure types, and resolutions.
     """)
     
-    # Get all schemes
     all_schemes = st.session_state.db.get_all_schemes()
     
     if all_schemes:
@@ -407,23 +399,22 @@ elif page == "📚 Knowledge Graph":
         scheme_data = []
         for scheme in all_schemes:
             scheme_data.append({
-                'Scheme': scheme['name'],
-                'Description': scheme['description'][:60] + '...' if scheme['description'] else 'N/A'
+                'Scheme': scheme.get('name', 'N/A'),
+                'Description': (scheme.get('description')[:60] + '...') if scheme.get('description') else 'N/A'
             })
         st.dataframe(pd.DataFrame(scheme_data), use_container_width=True)
         
         st.divider()
         
-        # Explore individual scheme
-        selected_scheme = st.selectbox("Explore Scheme Dependencies:", [s['name'] for s in all_schemes])
+        selected_scheme = st.selectbox("Explore Scheme Dependencies:", [s['name'] for s in all_schemes if 'name' in s])
         
         if selected_scheme:
-            scheme = next((s for s in all_schemes if s['name'] == selected_scheme), None)
+            scheme = next((s for s in all_schemes if s.get('name') == selected_scheme), None)
             if scheme:
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    services = st.session_state.db.get_services_by_scheme(scheme['id'])
+                    services = st.session_state.db.get_services_by_scheme(scheme.get('id'))
                     st.metric("Services Used", len(services) if services else 0)
                 
                 with col2:
@@ -434,7 +425,7 @@ elif page == "📚 Knowledge Graph":
                     all_authorities = st.session_state.db.client.table('appeal_authorities').select('*').execute()
                     st.metric("Appeal Authorities", len(all_authorities.data) if all_authorities.data else 0)
                 
-                st.markdown(f"**Description:** {scheme['description']}")
+                st.markdown(f"**Description:** {scheme.get('description', 'N/A')}")
     else:
         st.info("No schemes found in knowledge graph")
 
@@ -446,53 +437,50 @@ elif page == "📋 History":
     
     st.header("Routing History & Audit Log")
     
-    # Get audit history from database
     audit_history = st.session_state.db.get_audit_history(limit=50)
     
     if not audit_history:
         st.info("No grievances routed yet.")
     else:
-        # Display history
         st.subheader(f"Recent Grievances ({len(audit_history)})")
         
         for i, audit in enumerate(reversed(audit_history), 1):
-            with st.expander(f"#{i} - {audit['submitted_at'][:10]} | Score: {audit['confidence_score']:.1%}"):
+            with st.expander(f"#{i} - {audit.get('submitted_at', '')[:10]} | Score: {audit.get('confidence_score', 0.0):.1%}"):
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.write(f"**Grievance:** {audit['grievance_text'][:200]}...")
-                    st.write(f"**Department:** {audit['owner_department_id']}")
+                    st.write(f"**Grievance:** {audit.get('grievance_text', '')[:200]}...")
+                    st.write(f"**Department:** {audit.get('owner_department_id', 'N/A')}")
                 
                 with col2:
-                    st.write(f"**Confidence:** {audit['confidence_score']:.1%}")
-                    if audit['failure_types']:
+                    st.write(f"**Confidence:** {audit.get('confidence_score', 0.0):.1%}")
+                    if audit.get('failure_types'):
                         st.write("**Failures:**")
                         for failure in audit['failure_types']:
                             st.write(f"  - {failure}")
         
-        # Export options
         st.divider()
         
         col1, col2 = st.columns(2)
         
         with col1:
-            if st.button("📥 Export as CSV", use_container_width=True):
-                export_df = pd.DataFrame(audit_history)
-                st.download_button(
-                    "Download CSV",
-                    export_df.to_csv(index=False),
-                    "audit_history.csv",
-                    "text/csv"
-                )
+            export_df = pd.DataFrame(audit_history)
+            st.download_button(
+                "📥 Export as CSV",
+                export_df.to_csv(index=False),
+                "audit_history.csv",
+                "text/csv",
+                use_container_width=True
+            )
         
         with col2:
-            if st.button("📊 Export as JSON", use_container_width=True):
-                st.download_button(
-                    "Download JSON",
-                    json.dumps(audit_history, indent=2, default=str),
-                    "audit_history.json",
-                    "application/json"
-                )
+            st.download_button(
+                "📊 Export as JSON",
+                json.dumps(audit_history, indent=2, default=str),
+                "audit_history.json",
+                "application/json",
+                use_container_width=True
+            )
 
 # ============================================================================
 # PAGE 5: ABOUT
@@ -537,28 +525,15 @@ elif page == "ℹ️ About":
     
     ### Total Cost
     
-    **\$0 - Completely Free**
+    **$0 - Completely Free**
     
     - Streamlit Cloud: Free
     - Supabase: Free tier
     - GitHub: Free public repo
     
-    ### Limitations
-    
-    - Supabase free tier pauses after 7 days of inactivity (use GitHub Actions to auto-wake)
-    - Database limited to 500 MB (sufficient for MVP)
-    - Limited to 2 active projects on free tier
-    
     ---
     
     **Built for FDE (Frontend Data Engineering) Interview Preparation**
-    
-    This project demonstrates:
-    - Knowledge graph design and implementation
-    - Semantic routing with explainability
-    - SQL schema design for relationships
-    - End-to-end full stack application
-    
     """)
     
     with st.expander("📚 Learn More"):
@@ -578,75 +553,3 @@ st.markdown("""
 **Intelligent Grievance Routing System** | Zero-Cost Knowledge Graph Edition
 Powered by Supabase + Streamlit | Built for Government Domain
 """)
-
-# ============================================================================
-# HELPER FUNCTIONS
-# ============================================================================
-
-def create_path_visualization(graph_path):
-    """Create Plotly visualization of routing path"""
-    
-    if not graph_path:
-        return go.Figure()
-    
-    nodes = []
-    edges_x = []
-    edges_y = []
-    
-    # Extract unique nodes
-    for source, rel, target in graph_path:
-        if source not in nodes:
-            nodes.append(source)
-        if target not in nodes:
-            nodes.append(target)
-    
-    # Create positions
-    pos = {node: (i * 2, 0 if i % 2 == 0 else -1) for i, node in enumerate(nodes)}
-    
-    # Create edges
-    for source, rel, target in graph_path:
-        x0, y0 = pos[source]
-        x1, y1 = pos[target]
-        
-        edges_x.extend([x0, x1, None])
-        edges_y.extend([y0, y1, None])
-    
-    # Create figure
-    fig = go.Figure()
-    
-    # Add edges
-    fig.add_trace(go.Scatter(
-        x=edges_x, y=edges_y,
-        mode='lines',
-        line=dict(width=2, color='#1f77b4'),
-        hoverinfo='none',
-        showlegend=False
-    ))
-    
-    # Add nodes
-    node_x = [pos[node][0] for node in nodes]
-    node_y = [pos[node][1] for node in nodes]
-    
-    fig.add_trace(go.Scatter(
-        x=node_x, y=node_y,
-        mode='markers+text',
-        text=nodes,
-        textposition="top center",
-        hoverinfo='text',
-        marker=dict(
-            size=20,
-            color='#1f77b4',
-            line=dict(width=2, color='white')
-        ),
-        showlegend=False
-    ))
-    
-    fig.update_layout(
-        showlegend=False,
-        hovermode='closest',
-        margin=dict(b=0, l=0, r=0, t=0),
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
-    )
-    
-    return fig
