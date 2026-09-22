@@ -287,6 +287,17 @@ and they say to contact the bank. I'm not receiving any money.""",
                         "confidence": routing_decision.confidence_score,
                         "full_decision": routing_decision,
                     })
+                    try:
+                        st.session_state.db.log_grievance(
+                            grievance_text=grievance_text,
+                            owner_dept_id=routing_decision.primary_owner,
+                            confidence=routing_decision.confidence_score,
+                            failure_types=routing_decision.failure_types if hasattr(routing_decision, 'failure_types') else [],
+                            explanation=routing_decision.explanation if hasattr(routing_decision, 'explanation') else ""
+                        )
+                        st.toast("✅ Saved to database audit log!")
+                    except Exception as log_err:
+                        st.warning(f"⚠️ Could not save audit log to Supabase: {log_err}")
 
                     st.success("✅ Routing analysis complete!")
 

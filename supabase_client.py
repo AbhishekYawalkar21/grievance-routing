@@ -3,6 +3,7 @@ Supabase Database Client for Knowledge Graph
 """
 
 import os
+from urllib import response
 import streamlit as st
 from supabase import create_client, Client
 from typing import List, Dict, Optional
@@ -135,28 +136,43 @@ class SupabaseGraphClient:
     # ==================== WRITE OPERATIONS ====================
 
     def log_grievance(
-        self,
-        grievance_text: str,
-        owner_dept_id: int,
-        confidence: float,
-        failure_types: List[str],
-        explanation: str,
-    ) -> Dict:
+            self,
+            grievance_text: str,
+            owner_dept_id,  # Accepts integer or department string name
+            confidence: float,
+            failure_types: List[str],
+            explanation: str,
+            ) -> Dict:
         """Log routed grievance for audit trail"""
+
+        dept_id = None
+    
+        # If passed as an integer ID
+        if isinstance(owner_dept_id, int):
+            dept_id = owner_dept_id
+        elif isinstance(owner_dept_id, str):
+        # Look up the integer ID from department name
+            res = (
+                self.client.table("departments")
+                .select("id")
+                .ilike("name", f"%{owner_dept_id}%")
+                .execute()
+            )
+            if res.data:
+                dept_id = res.data[0]["id"]
         response = (
             self.client.table("grievance_audit")
             .insert(
                 {
                     "grievance_text": grievance_text,
-                    "owner_department_id": owner_dept_id,
-                    "confidence_score": confidence,
+                    "owner_department_id": dept_id,
+                    "confidence_score": float(confidence),
                     "failure_types": failure_types,
                     "explanation": explanation,
                 }
             )
             .execute()
         )
-
         return response.data[0] if response.data else {}
 
     # ==================== ANALYTICS ====================
