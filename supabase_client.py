@@ -136,30 +136,55 @@ class SupabaseGraphClient:
     # ==================== WRITE OPERATIONS ====================
 
     def log_grievance(
-            self,
-            grievance_text: str,
-            owner_dept_id,  # Accepts integer or department string name
-            confidence: float,
-            failure_types: List[str],
-            explanation: str,
-            ) -> Dict:
+        self,
+        grievance_text: str,
+        owner_dept_id,
+        confidence: float,
+        failure_types: List[str],
+        explanation: str
+        ) -> Dict:
         """Log routed grievance for audit trail"""
 
         dept_id = None
-    
-        # If passed as an integer ID
+
+        # If already an integer ID
         if isinstance(owner_dept_id, int):
             dept_id = owner_dept_id
         elif isinstance(owner_dept_id, str):
-        # Look up the integer ID from department name
-            res = (
+            # 1. Try finding in departments table
+            dept_res = (
                 self.client.table("departments")
                 .select("id")
                 .ilike("name", f"%{owner_dept_id}%")
                 .execute()
             )
-            if res.data:
-                dept_id = res.data[0]["id"]
+            if dept_res.data:
+                dept_id = dept_res.data[0]["id"]
+            else:
+                # 2. Fallback: Check if it matches a ministry name and map to its department
+                min_res = (
+                    self.client.table("ministries")
+                    .select("id")
+                    .ilike("name", f"%{owner_dept_id.split('&')[0].strip()}%")
+                    .execute()
+                )
+                if min_res.data:
+                    ministry_id = min_res.data[0]["id"]
+                    # Get the first department belonging to this ministry
+                    dept_by_min = (
+                        self.client.table("departments")
+                        .select("id")
+                        .eq("ministry_id", ministry_id)
+                        .execute()
+                    )
+                    if dept_by_min.data:
+                        dept_id = dept_by_min.data[0]["id"]
+
+        # 3. Fallback default department if still not found
+        if dept_id is None:
+            dept_id = 1  # Default to Agriculture Department (id: 1)
+
+        # Insert into database with a valid integer ID
         response = (
             self.client.table("grievance_audit")
             .insert(
@@ -173,6 +198,7 @@ class SupabaseGraphClient:
             )
             .execute()
         )
+
         return response.data[0] if response.data else {}
 
     # ==================== ANALYTICS ====================
