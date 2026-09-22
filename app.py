@@ -10,7 +10,7 @@ import json
 import plotly.graph_objects as go
 import plotly.express as px
 
-from grievance_router import GrievanceRouter, RoutingDecision, create_path_visualization
+from grievance_router import GrievanceRouter, create_path_visualization
 from supabase_client import SupabaseGraphClient
 
 # ============================================================================
