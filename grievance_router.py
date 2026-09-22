@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Tuple
 import plotly.graph_objects as go
 from supabase_client import SupabaseGraphClient
+import graphviz
 
 
 @dataclass
@@ -130,62 +131,35 @@ Proceed through the indicated resolution steps and check status via your regiona
         )
 
 
-def create_path_visualization(graph_path: List[Tuple[str, str, str]]) -> go.Figure:
-    """Generates a visual Plotly network map of the graph routing path."""
-    if not graph_path:
-        return go.Figure()
-
-    nodes = []
-    edges_x = []
-    edges_y = []
-
-    for source, rel, target in graph_path:
-        if source not in nodes:
-            nodes.append(source)
-        if target not in nodes:
-            nodes.append(target)
-
-    pos = {node: (i * 2, 0 if i % 2 == 0 else -0.5) for i, node in enumerate(nodes)}
-
-    for source, rel, target in graph_path:
-        x0, y0 = pos[source]
-        x1, y1 = pos[target]
-        edges_x.extend([x0, x1, None])
-        edges_y.extend([y0, y1, None])
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Scatter(
-        x=edges_x, y=edges_y,
-        mode='lines',
-        line=dict(width=2, color='#1f77b4'),
-        hoverinfo='none',
-        showlegend=False
-    ))
-
-    node_x = [pos[node][0] for node in nodes]
-    node_y = [pos[node][1] for node in nodes]
-
-    fig.add_trace(go.Scatter(
-        x=node_x, y=node_y,
-        mode='markers+text',
-        text=nodes,
-        textposition="top center",
-        hoverinfo='text',
-        marker=dict(
-            size=18,
-            color='#1f77b4',
-            line=dict(width=2, color='white')
-        ),
-        showlegend=False
-    ))
-
-    fig.update_layout(
-        showlegend=False,
-        hovermode='closest',
-        margin=dict(b=20, l=20, r=20, t=20),
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)
-    )
-
-    return fig
+def create_path_visualization(route_data: dict):
+    """
+    Generates a Graphviz visual path flow for the grievance routing model.
+    """
+    dot = graphviz.Digraph(comment="Grievance Routing Path")
+    dot.attr(rankdir="LR", size="8,5")
+    
+    # Custom node styles
+    dot.attr("node", shape="box", style="filled,rounded", color="#1E88E5", fontcolor="white", fontname="sans-serif")
+    
+    # Add Nodes
+    dot.node("A", "User Grievance")
+    
+    scheme = route_data.get("scheme", {}).get("name", "Unknown Scheme") if route_data.get("scheme") else "No Direct Scheme"
+    dot.node("B", f"Scheme:\n{scheme}")
+    
+    dept = route_data.get("department", {}).get("name", "Unassigned Department") if route_data.get("department") else "Unassigned"
+    dot.node("C", f"Department:\n{dept}")
+    
+    # Add Edges
+    dot.edge("A", "B", label="matched")
+    dot.edge("B", "C", label="routed to")
+    
+    # Add Resolution Authorities if available
+    authorities = route_data.get("authorities", [])
+    if authorities:
+        for idx, auth in enumerate(authorities):
+            auth_node = f"D_{idx}"
+            dot.node(auth_node, f"Authority:\n{auth.get('name', 'Authority')}", color="#43A047")
+            dot.edge("C", auth_node, label="escalates to")
+            
+    return dot
